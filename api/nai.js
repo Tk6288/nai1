@@ -1,35 +1,38 @@
-export default async (req, res) => {
-  // 允许跨域
+export default async function handler(req, res) {
+  // 1. 处理跨域 (CORS) - 允许任何网站访问
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
+  // 2. 如果是浏览器预检请求 (OPTIONS)，直接返回成功
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
-  const payload = req.body;
+  // 3. 简单的测试：如果是浏览器直接访问 (GET)，返回一段文字证明接口活着
+  if (req.method === 'GET') {
+    return res.status(200).send('NovelAI Proxy is Active! Please use POST method.');
+  }
+
+  // 4. 正式转发逻辑
   try {
-    const resp = await fetch('https://image.novelai.net/ai/generate-image', {
+    const naiResponse = await fetch('https://image.novelai.net/ai/generate-image', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + process.env.NAI_TOKEN, // 从环境变量获取 Key
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': req.headers.authorization || ('Bearer ' + process.env.NAI_TOKEN)
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(req.body)
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return res.status(resp.status).send(errText);
-    }
+    // 获取 NAI 返回的二进制图片数据
+    const data = await naiResponse.arrayBuffer();
 
-    const data = await resp.arrayBuffer();
-    // NAI 返回的是 zip 文件
+    // 原样返回状态码和数据
+    res.status(naiResponse.status);
     res.setHeader('Content-Type', 'application/zip');
     res.send(Buffer.from(data));
-  } catch (e) {
-    res.status(500).send(e.message);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-};
+}
